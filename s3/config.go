@@ -107,7 +107,7 @@ func newS3Client(config stow.Config) (client *s3.S3, endpoint string, err error)
 		authType = "accesskey"
 	}
 
-	httpClient := http.DefaultClient
+	httpClient := &http.Client{}
 	if skipSSLVerify, ok := config.Config(ConfigInsecureSkipSSLVerify); ok && skipSSLVerify == "true" {
 		httpClient.Transport = &http.Transport{
 			TLSClientConfig: &tls.Config{
