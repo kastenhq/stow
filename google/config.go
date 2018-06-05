@@ -25,7 +25,18 @@ const (
 )
 
 func init() {
+	validatefn := func(config stow.Config) error {
+		_, ok := config.Config(ConfigJSON)
+		if !ok {
+			return errors.New("missing JSON configuration")
+		}
 
+		_, ok = config.Config(ConfigProjectId)
+		if !ok {
+			return errors.New("missing Project ID")
+		}
+		return nil
+	}
 	makefn := func(config stow.Config) (stow.Location, error) {
 		_, ok := config.Config(ConfigJSON)
 		if !ok {
@@ -56,7 +67,7 @@ func init() {
 		return u.Scheme == Kind
 	}
 
-	stow.Register(Kind, makefn, kindfn)
+	stow.Register(Kind, makefn, kindfn, validatefn)
 }
 
 // Attempts to create a session based on the information given.
