@@ -103,6 +103,7 @@ func (c *container) RemoveItem(id string) error {
 // content, and the size of the file. Many more attributes can be given to the
 // file, including metadata. Keeping it simple for now.
 func (c *container) Put(name string, r io.Reader, size int64, metadata map[string]interface{}) (stow.Item, error) {
+	var length *int64
 	content, err := ioutil.ReadAll(r)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create or update item, reading content")
@@ -114,12 +115,18 @@ func (c *container) Put(name string, r io.Reader, size int64, metadata map[strin
 		return nil, errors.Wrap(err, "unable to create or update item, preparing metadata")
 	}
 
+	if size > 0 {
+		length = aws.Int64(size)
+	} else {
+		length = nil // To avoid failure when uploading contents received from a pipe
+	}
+
 	params := &s3.PutObjectInput{
-		Bucket: aws.String(c.name), // Required
-		Key:    aws.String(name),   // Required
-		// ContentLength: aws.Int64(size), // Commented out to avoid failure when uploading contents received from a pipe
-		Body:     bytes.NewReader(content),
-		Metadata: mdPrepped, // map[string]*string
+		Bucket:        aws.String(c.name), // Required
+		Key:           aws.String(name),   // Required
+		ContentLength: length,
+		Body:          bytes.NewReader(content),
+		Metadata:      mdPrepped, // map[string]*string
 	}
 
 	// Only Etag is returned.
