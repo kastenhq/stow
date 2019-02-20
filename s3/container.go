@@ -115,11 +115,11 @@ func (c *container) Put(name string, r io.Reader, size int64, metadata map[strin
 	}
 
 	params := &s3.PutObjectInput{
-		Bucket:        aws.String(c.name), // Required
-		Key:           aws.String(name),   // Required
-		ContentLength: aws.Int64(size),
-		Body:          bytes.NewReader(content),
-		Metadata:      mdPrepped, // map[string]*string
+		Bucket: aws.String(c.name), // Required
+		Key:    aws.String(name),   // Required
+		// ContentLength: aws.Int64(size), // Commented out to avoid failure when uploading contents received from a pipe
+		Body:     bytes.NewReader(content),
+		Metadata: mdPrepped, // map[string]*string
 	}
 
 	// Only Etag is returned.
