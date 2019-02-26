@@ -56,8 +56,8 @@ func (c *container) Items(prefix, cursor string, count int) ([]stow.Item, string
 	containerItems := make([]stow.Item, len(response.Contents)) // Allocate space for the Item slice.
 
 	for i, object := range response.Contents {
-		etag := cleanEtag(*object.ETag) // Copy etag value and remove the strings.
-		object.ETag = &etag             // Assign the value to the object field representing the item.
+		etag := cleanEtag(object.ETag) // Copy etag value and remove the strings.
+		object.ETag = &etag            // Assign the value to the object field representing the item.
 
 		containerItems[i] = &item{
 			container: c,
@@ -131,7 +131,7 @@ func (c *container) Put(name string, r io.Reader, size int64, metadata map[strin
 	if err != nil {
 		return nil, errors.Wrap(err, "RemoveItem, deleting object")
 	}
-	etag := cleanEtag(*response.ETag)
+	etag := cleanEtag(response.ETag)
 
 	// Some fields are empty because this information isn't included in the response.
 	// May have to involve sending a request if we want more specific information.
@@ -182,7 +182,7 @@ func (c *container) getItem(id string) (*item, error) {
 	}
 	defer res.Body.Close()
 
-	etag := cleanEtag(*res.ETag) // etag string value contains quotations. Remove them.
+	etag := cleanEtag(res.ETag) // etag string value contains quotations. Remove them.
 	md, err := parseMetadata(res.Metadata)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to retrieve Item information, parsing metadata")
@@ -222,7 +222,11 @@ func (c *container) getItem(id string) (*item, error) {
 //
 // This function contains a loop to check for the presence of the three possible
 // filler characters and strips them, resulting in only the Etag value.
-func cleanEtag(etag string) string {
+func cleanEtag(e *string) string {
+	if e == nil {
+		return ""
+	}
+	etag := *e
 	for {
 		// Check if the filler characters are present
 		if strings.HasPrefix(etag, `\"`) {
