@@ -29,7 +29,7 @@ const (
 
 	// ConfigToken is an optional argument which is required when providing
 	// credentials with temporary access.
-	// ConfigToken = "token"
+	ConfigToken = "token"
 
 	// ConfigRegion represents the region/availability zone of the session.
 	ConfigRegion = "region"
@@ -101,7 +101,7 @@ func newS3Client(config stow.Config) (client *s3.S3, endpoint string, err error)
 	authType, _ := config.Config(ConfigAuthType)
 	accessKeyID, _ := config.Config(ConfigAccessKeyID)
 	secretKey, _ := config.Config(ConfigSecretKey)
-	//	token, _ := config.Config(ConfigToken)
+	token, _ := config.Config(ConfigToken)
 
 	if authType == "" {
 		authType = "accesskey"
@@ -131,7 +131,7 @@ func newS3Client(config stow.Config) (client *s3.S3, endpoint string, err error)
 	}
 
 	if authType == "accesskey" {
-		awsConfig.WithCredentials(credentials.NewStaticCredentials(accessKeyID, secretKey, ""))
+		awsConfig.WithCredentials(credentials.NewStaticCredentials(accessKeyID, secretKey, token))
 	}
 
 	endpoint, ok = config.Config(ConfigEndpoint)
