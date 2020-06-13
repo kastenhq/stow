@@ -93,6 +93,21 @@ func (l *location) Close() error {
 // exact.
 func (l *location) Container(id string) (stow.Container, error) {
 	log.Print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXX 111")
+	client := l.client
+	bucketRegion, bucketRegionSet := l.config.Config("region")
+
+	c := &container{
+		name:           id,
+		client:         client,
+		region:         bucketRegion,
+		customEndpoint: l.customEndpoint,
+	}
+
+	if bucketRegionSet || bucketRegion != "" {
+		log.Print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXX 666")
+		return c, nil
+	}
+
 	params := &s3.GetBucketLocationInput{
 		Bucket: aws.String(id), // Required
 	}
@@ -107,15 +122,6 @@ func (l *location) Container(id string) (stow.Container, error) {
 		}
 		log.Print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXX 444")
 		return nil, errors.Wrap(err, "Container, getting the bucket location")
-	}
-
-	region, _ := l.config.Config("region")
-
-	c := &container{
-		name:           id,
-		client:         l.client,
-		region:         region,
-		customEndpoint: l.customEndpoint,
 	}
 
 	log.Print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXX 555")
