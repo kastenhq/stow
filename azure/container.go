@@ -1,9 +1,11 @@
 package azure
 
 import (
+	"fmt"
 	"io"
 	"strings"
 	"time"
+	
 
 	az "github.com/Azure/azure-sdk-for-go/storage"
 	"github.com/graymeta/stow"
@@ -89,7 +91,7 @@ func (c *container) Put(name string, r io.Reader, size int64, metadata map[strin
 	}
 
 	name = strings.Replace(name, " ", "+", -1)
-
+	fmt.Printf("size %d and maxPutSize %s before multipart\n", size, maxPutSize)
 	if size > maxPutSize {
 		// Do a multipart upload
 		err := c.multipartUpload(name, r, size)
