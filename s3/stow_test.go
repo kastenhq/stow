@@ -2,13 +2,18 @@
 package s3
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/cheekybits/is"
 	"github.com/graymeta/stow"
 	"github.com/graymeta/stow/test"
@@ -95,4 +100,108 @@ func TestInvalidAuthtype(t *testing.T) {
 	_, err := stow.Dial("s3", config)
 	is.Err(err)
 	is.True(strings.Contains(err.Error(), "invalid auth_type"))
+}
+
+func TestV2SigningEnabled(t *testing.T) {
+	is := is.New(t)
+
+	//check v2 singing occurs
+	v2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		is.True(strings.HasPrefix(r.Header.Get("Authorization"), "AWS access-key:"))
+		w.Header().Add("ETag", "something")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer v2Server.Close()
+
+	uri, err := url.Parse(v2Server.URL + "/testing")
+	is.NoErr(err)
+
+	config := stow.ConfigMap{
+		"access_key_id": "access-key",
+		"secret_key":    "secret-key",
+		"region":        "do-not-care",
+		"v2_signing":    "true",
+		"endpoint":      v2Server.URL,
+	}
+
+	location, err := stow.Dial("s3", config)
+	is.NoErr(err)
+	_, _ = location.ItemByURL(uri)
+
+	//check v2 signing does not occur
+	v4Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		is.False(strings.HasPrefix(r.Header.Get("Authorization"), "AWS access-key:"))
+		w.Header().Add("ETag", "something")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer v4Server.Close()
+
+	uri, err = url.Parse(v4Server.URL + "/testing")
+	is.NoErr(err)
+
+	config = stow.ConfigMap{
+		"access_key_id": "access-key",
+		"secret_key":    "secret-key",
+		"region":        "do-not-care",
+		"v2_signing":    "false",
+		"endpoint":      v4Server.URL,
+	}
+
+	location, err = stow.Dial("s3", config)
+	is.NoErr(err)
+	_, _ = location.ItemByURL(uri)
+}
+
+func TestWillNotRequestRegionWhenConfigured(t *testing.T) {
+	is := is.New(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		is.Fail("Request should not occur")
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	config := stow.ConfigMap{
+		"access_key_id": "access-key",
+		"secret_key":    "secret-key",
+		"region":        "do-not-care",
+		"endpoint":      server.URL,
+	}
+
+	location, err := stow.Dial("s3", config)
+	is.NoErr(err)
+
+	_, err = location.Container("Whatever")
+
+	is.NoErr(err)
+}
+
+func TestWillRequestRegionWhenConfigured(t *testing.T) {
+	is := is.New(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		awsLocationQuery, err := url.ParseQuery("location")
+		is.NoErr(err)
+		is.Equal(awsLocationQuery.Encode(), r.URL.RawQuery)
+		b, _ := json.Marshal(s3.GetBucketLocationOutput{
+			LocationConstraint: aws.String("whatever"),
+		})
+		w.Write(b)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	config := stow.ConfigMap{
+		"access_key_id": "access-key",
+		"secret_key":    "secret-key",
+		"endpoint":      server.URL,
+	}
+
+	location, err := stow.Dial("s3", config)
+	is.NoErr(err)
+
+	_, err = location.Container("Whatever")
+
+	// Make sure that this is an error
+	is.NoErr(err)
 }

@@ -35,6 +35,9 @@ func All(t *testing.T, kind string, config stow.Config) {
 		isWindows = true
 	}
 
+	err := stow.Validate(kind, config)
+	is.NoErr(err)
+
 	location, err := stow.Dial(kind, config)
 	is.NoErr(err)
 	is.OK(location)
@@ -69,8 +72,9 @@ func All(t *testing.T, kind string, config stow.Config) {
 		}
 	}()
 
-	// create two containers
-	c1 := createContainer(is, location, "stowtest"+randName(10))
+	// create three containers
+	c1Name := "stowtest" + randName(10)
+	c1 := createContainer(is, location, c1Name)
 	c2 := createContainer(is, location, "stowtest"+randName(10))
 	c3 := createContainer(is, location, "stowtest"+randName(10))
 	is.NotEqual(c1.ID(), c2.ID())
@@ -89,7 +93,9 @@ func All(t *testing.T, kind string, config stow.Config) {
 
 	// add three items to c1 + add metadata to one item, assert if the implementation allows.
 	// Tests metadata retrieval on PUTs.
-	item1, skip1 := putItem(is, c1, "a_first/the item", "item one", md1)
+	item1Content := "item one"
+	item1Name := "a_first/the item"
+	item1, skip1 := putItem(is, c1, item1Name, item1Content, md1)
 	is.OK(item1)
 	if !skip1 {
 		is.NoErr(checkMetadata(t, is, item1, md1))
@@ -140,6 +146,15 @@ func All(t *testing.T, kind string, config stow.Config) {
 	is.Equal(readItemContents(is, item1), "item one")
 	is.NoErr(acceptableTime(t, is, items[0], item1))
 
+	if ir, ok := item1.(stow.ItemRanger); ok {
+		rc, err := ir.OpenRange(0, 3)
+		is.NoErr(err)
+		defer rc.Close()
+		b, err := ioutil.ReadAll(rc)
+		is.NoErr(err)
+		is.Equal(b, []byte("item"))
+	}
+
 	is.OK(item2.ID())
 	is.OK(item2.Name())
 	is.Equal(items[1].ID(), item2.ID())
@@ -167,6 +182,12 @@ func All(t *testing.T, kind string, config stow.Config) {
 	is.OK(c1copy)
 	is.Equal(c1copy.ID(), c1.ID())
 
+	// get container by name
+	c1copy2, err := location.Container(c1Name)
+	is.NoErr(err)
+	is.OK(c1copy2)
+	is.Equal(c1copy2.ID(), c1.ID())
+
 	// get container that doesn't exist
 	noContainer, err := location.Container(c1.ID() + "nope")
 	is.Equal(stow.ErrNotFound, err)
@@ -179,7 +200,7 @@ func All(t *testing.T, kind string, config stow.Config) {
 	is.Equal(item1copy.ID(), item1.ID())
 	is.Equal(item1copy.Name(), item1.Name())
 	is.Equal(size(is, item1copy), size(is, item1))
-	is.Equal(readItemContents(is, item1copy), "item one")
+	is.Equal(readItemContents(is, item1copy), item1Content)
 	is.OK(etag(t, is, item1copy))
 	if !skip1 {
 		is.NoErr(checkMetadata(t, is, item1copy, md1))
@@ -198,6 +219,19 @@ func All(t *testing.T, kind string, config stow.Config) {
 	is.OK(item1b)
 	is.Equal(item1b.ID(), item1.ID())
 	is.Equal(etag(t, is, item1b), etag(t, is, item1copy))
+
+	// get item by name
+	item1copy2, err := c1copy2.Item(item1Name)
+	is.NoErr(err)
+	is.OK(item1copy2)
+	is.Equal(item1copy2.ID(), item1.ID())
+	is.Equal(item1copy2.Name(), item1.Name())
+	is.Equal(size(is, item1copy2), len(item1Content))
+	is.Equal(readItemContents(is, item1copy2), item1Content)
+	is.OK(etag(t, is, item1copy2))
+	if !skip1 {
+		is.NoErr(checkMetadata(t, is, item1copy2, md1))
+	}
 
 	// **************************************************
 	// Walking

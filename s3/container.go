@@ -1,22 +1,25 @@
 package s3
 
 import (
-	"bytes"
 	"io"
-	"io/ioutil"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/graymeta/stow"
 	"github.com/pkg/errors"
 )
 
-// Amazon S3 bucket contains a creationdate and a name.
+// Amazon S3 bucket contains a creation date and a name.
 type container struct {
-	name           string // Name is needed to retrieve items.
-	client         *s3.S3 // Client is responsible for performing the requests.
-	region         string // Describes the AWS Availability Zone of the S3 Bucket.
+	// name is needed to retrieve items.
+	name string
+	// client is responsible for performing the requests.
+	client *s3.S3
+	// region describes the AWS Availability Zone of the S3 Bucket.
+	region         string
 	customEndpoint string
 }
 
@@ -30,8 +33,9 @@ func (c *container) Name() string {
 	return c.name
 }
 
-// Item returns a stow.Item instance of a container based on the
-// name of the container and the key representing
+// Item returns a stow.Item instance of a container based on the name of the container and the key representing. The
+// retrieved item only contains metadata about the object. This ensures that only the minimum amount of information is
+// transferred. Calling item.Open() will actually do a get request and open a stream to read from.
 func (c *container) Item(id string) (stow.Item, error) {
 	return c.getItem(id)
 }
@@ -41,25 +45,28 @@ func (c *container) Item(id string) (stow.Item, error) {
 func (c *container) Items(prefix, cursor string, count int) ([]stow.Item, string, error) {
 	itemLimit := int64(count)
 
-	params := &s3.ListObjectsInput{
-		Bucket:  aws.String(c.Name()),
-		Marker:  &cursor,
-		MaxKeys: &itemLimit,
-		Prefix:  &prefix,
+	params := &s3.ListObjectsV2Input{
+		Bucket:     aws.String(c.Name()),
+		StartAfter: &cursor,
+		MaxKeys:    &itemLimit,
+		Prefix:     &prefix,
 	}
 
-	response, err := c.client.ListObjects(params)
+	response, err := c.client.ListObjectsV2(params)
 	if err != nil {
 		return nil, "", errors.Wrap(err, "Items, listing objects")
 	}
 
-	containerItems := make([]stow.Item, len(response.Contents)) // Allocate space for the Item slice.
+	var containerItems []stow.Item
 
-	for i, object := range response.Contents {
+	for _, object := range response.Contents {
+		if *object.StorageClass == "GLACIER" {
+			continue
+		}
 		etag := cleanEtag(object.ETag) // Copy etag value and remove the strings.
 		object.ETag = &etag            // Assign the value to the object field representing the item.
 
-		containerItems[i] = &item{
+		newItem := &item{
 			container: c,
 			client:    c.client,
 			properties: properties{
@@ -71,18 +78,17 @@ func (c *container) Items(prefix, cursor string, count int) ([]stow.Item, string
 				StorageClass: object.StorageClass,
 			},
 		}
+		containerItems = append(containerItems, newItem)
 	}
 
 	// Create a marker and determine if the list of items to retrieve is complete.
-	// If not, provide the file name of the last item as the next marker. S3 lists
-	// its items (S3 Objects) in alphabetical order, so it will receive the item name
-	// and correctly return the next list of items in subsequent requests.
-	marker := ""
+	// If not, the last file is the input to the value of after which item to start
+	startAfter := ""
 	if *response.IsTruncated {
-		marker = containerItems[len(containerItems)-1].Name()
+		startAfter = containerItems[len(containerItems)-1].Name()
 	}
 
-	return containerItems, marker, nil
+	return containerItems, startAfter, nil
 }
 
 func (c *container) RemoveItem(id string) error {
@@ -103,35 +109,31 @@ func (c *container) RemoveItem(id string) error {
 // content, and the size of the file. Many more attributes can be given to the
 // file, including metadata. Keeping it simple for now.
 func (c *container) Put(name string, r io.Reader, size int64, metadata map[string]interface{}) (stow.Item, error) {
-	content, err := ioutil.ReadAll(r)
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to create or update item, reading content")
-	}
-
 	// Convert map[string]interface{} to map[string]*string
 	mdPrepped, err := prepMetadata(metadata)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create or update item, preparing metadata")
 	}
 
-	params := &s3.PutObjectInput{
+	uploader := s3manager.NewUploaderWithClient(c.client)
+	_, err = uploader.Upload(&s3manager.UploadInput{
 		Bucket:   aws.String(c.name), // Required
 		Key:      aws.String(name),   // Required
-		Body:     bytes.NewReader(content),
+		Body:     r,
 		Metadata: mdPrepped, // map[string]*string
-	}
+	})
 
-	// When uploading contents received from a pipe (size = 0), params.ContentLength should be nil to avoid failure
-	if size > 0 {
-		params.ContentLength = aws.Int64(size)
-	}
-
-	// Only Etag is returned.
-	response, err := c.client.PutObject(params)
 	if err != nil {
-		return nil, errors.Wrap(err, "RemoveItem, deleting object")
+		return nil, errors.Wrap(err, "PutObject, putting object")
 	}
-	etag := cleanEtag(response.ETag)
+	i, err := c.client.HeadObject(&s3.HeadObjectInput{
+		Key:    aws.String(name),
+		Bucket: aws.String(c.name),
+	})
+	var etag string
+	if i.ETag != nil && err == nil {
+		etag = cleanEtag(i.ETag)
+	}
 
 	// Some fields are empty because this information isn't included in the response.
 	// May have to involve sending a request if we want more specific information.
@@ -167,20 +169,19 @@ func (c *container) Region() string {
 // May be simpler to just stick it in PUT and and do a request every time, please vouch
 // for this if so.
 func (c *container) getItem(id string) (*item, error) {
-	params := &s3.GetObjectInput{
+	params := &s3.HeadObjectInput{
 		Bucket: aws.String(c.name),
 		Key:    aws.String(id),
 	}
 
-	res, err := c.client.GetObject(params)
+	res, err := c.client.HeadObject(params)
 	if err != nil {
 		// stow needs ErrNotFound to pass the test but amazon returns an opaque error
-		if strings.Contains(err.Error(), "NoSuchKey") {
+		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == "NotFound" {
 			return nil, stow.ErrNotFound
 		}
 		return nil, errors.Wrap(err, "getItem, getting the object")
 	}
-	defer res.Body.Close()
 
 	etag := cleanEtag(res.ETag) // etag string value contains quotations. Remove them.
 	md, err := parseMetadata(res.Metadata)

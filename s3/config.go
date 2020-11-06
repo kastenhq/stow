@@ -17,6 +17,11 @@ import (
 // Kind represents the name of the location/storage type.
 const Kind = "s3"
 
+var (
+	authTypeAccessKey = "accesskey"
+	authTypeIAM       = "iam"
+)
+
 const (
 	// ConfigAuthType is an optional argument that defines whether to use an IAM role or access key based auth
 	ConfigAuthType = "auth_type"
@@ -46,22 +51,49 @@ const (
 	// validation
 	// Its default value is "false", to disable SSL verfication set it to "true".
 	ConfigInsecureSkipSSLVerify = "insecure_skip_ssl_verify"
+
+	// ConfigV2Signing is an optional config value for signing requests with the v2 signature.
+	// Its default value is "false", to enable set to "true".
+	// This feature is useful for s3-compatible blob stores -- ie minio.
+	ConfigV2Signing = "v2_signing"
 )
 
 func init() {
+	validatefn := func(config stow.Config) error {
+		authType, ok := config.Config(ConfigAuthType)
+		if !ok || authType == "" {
+			authType = authTypeAccessKey
+		}
 
+		if !(authType == authTypeAccessKey || authType == authTypeIAM) {
+			return errors.New("invalid auth_type")
+		}
+
+		if authType == authTypeAccessKey {
+			_, ok := config.Config(ConfigAccessKeyID)
+			if !ok {
+				return errors.New("missing Access Key ID")
+			}
+
+			_, ok = config.Config(ConfigSecretKey)
+			if !ok {
+				return errors.New("missing Secret Key")
+			}
+		}
+		return nil
+	}
 	makefn := func(config stow.Config) (stow.Location, error) {
 
 		authType, ok := config.Config(ConfigAuthType)
 		if !ok || authType == "" {
-			authType = "accesskey"
+			authType = authTypeAccessKey
 		}
 
-		if !(authType == "accesskey" || authType == "iam") {
+		if !(authType == authTypeAccessKey || authType == authTypeIAM) {
 			return nil, errors.New("invalid auth_type")
 		}
 
-		if authType == "accesskey" {
+		if authType == authTypeAccessKey {
 			_, ok := config.Config(ConfigAccessKeyID)
 			if !ok {
 				return nil, errors.New("missing Access Key ID")
@@ -74,7 +106,7 @@ func init() {
 		}
 
 		// Create a new client (s3 session)
-		client, endpoint, err := newS3Client(config)
+		client, endpoint, err := newS3Client(config, "")
 		if err != nil {
 			return nil, err
 		}
@@ -93,18 +125,18 @@ func init() {
 		return u.Scheme == Kind
 	}
 
-	stow.Register(Kind, makefn, kindfn)
+	stow.Register(Kind, makefn, kindfn, validatefn)
 }
 
 // Attempts to create a session based on the information given.
-func newS3Client(config stow.Config) (client *s3.S3, endpoint string, err error) {
+func newS3Client(config stow.Config, region string) (client *s3.S3, endpoint string, err error) {
 	authType, _ := config.Config(ConfigAuthType)
 	accessKeyID, _ := config.Config(ConfigAccessKeyID)
 	secretKey, _ := config.Config(ConfigSecretKey)
 	token, _ := config.Config(ConfigToken)
 
 	if authType == "" {
-		authType = "accesskey"
+		authType = authTypeAccessKey
 	}
 
 	httpClient := &http.Client{}
@@ -123,18 +155,20 @@ func newS3Client(config stow.Config) (client *s3.S3, endpoint string, err error)
 		WithLogLevel(aws.LogOff).
 		WithSleepDelay(time.Sleep)
 
-	region, ok := config.Config(ConfigRegion)
-	if ok {
+	if region == "" {
+		region, _ = config.Config(ConfigRegion)
+	}
+	if region != "" {
 		awsConfig.WithRegion(region)
 	} else {
 		awsConfig.WithRegion("us-east-1")
 	}
 
-	if authType == "accesskey" {
+	if authType == authTypeAccessKey {
 		awsConfig.WithCredentials(credentials.NewStaticCredentials(accessKeyID, secretKey, token))
 	}
 
-	endpoint, ok = config.Config(ConfigEndpoint)
+	endpoint, ok := config.Config(ConfigEndpoint)
 	if ok {
 		awsConfig.WithEndpoint(endpoint).
 			WithS3ForcePathStyle(true)
@@ -145,12 +179,20 @@ func newS3Client(config stow.Config) (client *s3.S3, endpoint string, err error)
 		awsConfig.WithDisableSSL(true)
 	}
 
-	sess := session.New(awsConfig)
+	sess, err := session.NewSession(awsConfig)
+	if err != nil {
+		return nil, "", err
+	}
 	if sess == nil {
 		return nil, "", errors.New("creating the S3 session")
 	}
 
 	s3Client := s3.New(sess)
+
+	usev2, ok := config.Config(ConfigV2Signing)
+	if ok && usev2 == "true" {
+		setv2Handlers(s3Client)
+	}
 
 	return s3Client, endpoint, nil
 }
