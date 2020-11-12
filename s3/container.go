@@ -146,21 +146,17 @@ func (c *container) Put(name string, r io.Reader, size int64, metadata map[strin
 	// Keeping it simple for now.
 	// s3.Object info: https://github.com/aws/aws-sdk-go/blob/master/service/s3/api.go#L7092-L7107
 	// Response: https://github.com/aws/aws-sdk-go/blob/master/service/s3/api.go#L8193-L8227
-	p := properties{
-		ETag: &etag,
-		Key:  &name,
-		//LastModified *time.Time
-		//Owner        *s3.Owner
-		//StorageClass *string
-	}
-	// When uploading contents received from a pipe (size = 0), set size to nil
-	if size > 0 {
-		p.Size = &size
-	}
 	newItem := &item{
-		container:  c,
-		client:     c.client,
-		properties: p,
+		container: c,
+		client:    c.client,
+		properties: properties{
+			ETag: &etag,
+			Key:  &name,
+			Size: &size,
+			//LastModified *time.Time
+			//Owner        *s3.Owner
+			//StorageClass *string
+		},
 	}
 
 	return newItem, nil
