@@ -1,9 +1,7 @@
 package s3
 
 import (
-	"bytes"
 	"io"
-	"io/ioutil"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -111,10 +109,10 @@ func (c *container) RemoveItem(id string) error {
 // content, and the size of the file. Many more attributes can be given to the
 // file, including metadata. Keeping it simple for now.
 func (c *container) Put(name string, r io.Reader, size int64, metadata map[string]interface{}) (stow.Item, error) {
-	content, err := ioutil.ReadAll(r)
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to create or update item, reading content")
-	}
+	// content, err := ioutil.ReadAll(r)
+	// if err != nil {
+	// 	return nil, errors.Wrap(err, "unable to create or update item, reading content")
+	// }
 	// Convert map[string]interface{} to map[string]*string
 	mdPrepped, err := prepMetadata(metadata)
 	if err != nil {
@@ -122,11 +120,15 @@ func (c *container) Put(name string, r io.Reader, size int64, metadata map[strin
 	}
 
 	uploader := s3manager.NewUploaderWithClient(c.client)
-	_, err = uploader.Upload(&s3manager.UploadInput{
+	// Upload input parameters
+	upParams := &s3manager.UploadInput{
 		Bucket:   aws.String(c.name), // Required
 		Key:      aws.String(name),   // Required
-		Body:     bytes.NewReader(content),
+		Body:     r,
 		Metadata: mdPrepped, // map[string]*string
+	}
+	_, err = uploader.Upload(upParams, func(u *s3manager.Uploader) {
+		u.PartSize = 10 * 1024 * 1024 // 10MB part size
 	})
 
 	if err != nil {
