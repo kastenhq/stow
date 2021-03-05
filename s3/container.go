@@ -131,9 +131,7 @@ func (c *container) Put(name string, r io.Reader, size int64, metadata map[strin
 		Body:     &reader{r},
 		Metadata: mdPrepped, // map[string]*string
 	}
-	_, err = uploader.Upload(upParams, func(u *s3manager.Uploader) {
-		u.PartSize = 10 * 1024 * 1024 // 10MB part size
-	})
+	_, err = uploader.Upload(upParams)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "PutObject, putting object")
