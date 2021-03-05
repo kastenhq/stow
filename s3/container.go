@@ -136,7 +136,8 @@ func (c *container) Put(name string, r io.Reader, size int64, metadata map[strin
 	// based on the total size, because by default only 10,000 parts are allowed
 	// TotalPartsExceeded: exceeded total allowed configured MaxUploadParts (10000)
 	_, err = uploader.Upload(upParams, func(u *s3manager.Uploader) {
-		u.PartSize = 64 * 1024 * 1024 // 64MB part size
+		u.PartSize = 16 * 1024 * 1024 // 64MB part size
+		u.MaxUploadParts = 40000
 	})
 
 	if err != nil {
