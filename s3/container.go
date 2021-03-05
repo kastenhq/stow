@@ -131,7 +131,13 @@ func (c *container) Put(name string, r io.Reader, size int64, metadata map[strin
 		Body:     &reader{r},
 		Metadata: mdPrepped, // map[string]*string
 	}
-	_, err = uploader.Upload(upParams)
+
+	// we might want to write something here to figure out partsize
+	// based on the total size, because by default only 10,000 parts are allowed
+	// TotalPartsExceeded: exceeded total allowed configured MaxUploadParts (10000)
+	_, err = uploader.Upload(upParams, func(u *s3manager.Uploader) {
+		u.PartSize = 128 * 1024 * 1024 // 128MB part size
+	})
 
 	if err != nil {
 		return nil, errors.Wrap(err, "PutObject, putting object")
