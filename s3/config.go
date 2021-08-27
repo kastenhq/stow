@@ -2,6 +2,7 @@ package s3
 
 import (
 	"crypto/tls"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -172,6 +173,8 @@ func newS3Client(config stow.Config, region string) (client *s3.S3, endpoint str
 	if ok {
 		awsConfig.WithEndpoint(endpoint)
 	}
+
+	log.Print("Default to virtual host style paths")
 
 	disableSSL, ok := config.Config(ConfigDisableSSL)
 	if ok && disableSSL == "true" {
