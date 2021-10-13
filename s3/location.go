@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"log"
 	"net/url"
 	"strings"
 
@@ -91,16 +92,20 @@ func (l *location) Close() error {
 // Container retrieves a stow.Container based on its name which must be
 // exact.
 func (l *location) Container(id string) (stow.Container, error) {
+	log.Print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXX 111")
 	params := &s3.GetBucketLocationInput{
 		Bucket: aws.String(id), // Required
 	}
 
 	_, err := l.client.GetBucketLocation(params)
 	if err != nil {
+		log.Print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXX 222")
 		// stow needs ErrNotFound to pass the test but amazon returns an opaque error
 		if strings.Contains(err.Error(), "NoSuchBucket") {
+			log.Print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXX 333")
 			return nil, stow.ErrNotFound
 		}
+		log.Print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXX 444")
 		return nil, errors.Wrap(err, "Container, getting the bucket location")
 	}
 
@@ -113,6 +118,7 @@ func (l *location) Container(id string) (stow.Container, error) {
 		customEndpoint: l.customEndpoint,
 	}
 
+	log.Print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXX 555")
 	return c, nil
 }
 
