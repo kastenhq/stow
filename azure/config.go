@@ -76,7 +76,8 @@ func newBlobStorageClient(cfg stow.Config) (*az.BlobStorageClient, error) {
 	var err error
 	envName, ok := cfg.Config(ConfigEnvName)
 	if ok && envName != "" {
-		env, err := azure.EnvironmentFromName(envName)
+		var env azure.Environment
+		env, err = azure.EnvironmentFromName(envName)
 		if err != nil {
 			return nil, err
 		}
