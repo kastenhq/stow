@@ -80,7 +80,7 @@ func (l *location) Containers(prefix, cursor string, count int) ([]stow.Containe
 
 	// Region is pulled from stow.Config. If Region is specified, only add
 	// Bucket to Container list if it is located in configured Region.
-	region, regionSet := l.config.Config(ConfigRegion)
+	region, _ := l.config.Config(ConfigRegion)
 
 	// Endpoint would indicate that we are using s3-compatible storage, which
 	// does not support s3session.GetBucketRegion().
@@ -114,9 +114,6 @@ func (l *location) Containers(prefix, cursor string, count int) ([]stow.Containe
 				}
 				return nil, "", errors.Wrapf(err, "Containers, getting bucket region for: %s", *bucket.Name)
 			}
-			if regionSet && region != "" && bucketRegion != region {
-				continue
-			}
 
 			client, _, err = newS3Client(l.config, bucketRegion)
 			if err != nil {
@@ -147,7 +144,7 @@ func (l *location) Close() error {
 // exact.
 func (l *location) Container(id string) (stow.Container, error) {
 	client := l.client
-	bucketRegion, bucketRegionSet := l.config.Config(ConfigRegion)
+	bucketRegion, _ := l.config.Config(ConfigRegion)
 
 	// Endpoint would indicate that we are using s3-compatible storage, which
 	// does not support s3session.GetBucketRegion().
@@ -163,17 +160,6 @@ func (l *location) Container(id string) (stow.Container, error) {
 		}
 	}
 
-	c := &container{
-		name:           id,
-		client:         client,
-		region:         bucketRegion,
-		customEndpoint: l.customEndpoint,
-	}
-
-	if bucketRegionSet || bucketRegion != "" {
-		return c, nil
-	}
-
 	params := &s3.GetBucketLocationInput{
 		Bucket: aws.String(id),
 	}
@@ -185,6 +171,13 @@ func (l *location) Container(id string) (stow.Container, error) {
 		}
 
 		return nil, errors.Wrap(err, "GetBucketLocation")
+	}
+
+	c := &container{
+		name:           id,
+		client:         client,
+		region:         bucketRegion,
+		customEndpoint: l.customEndpoint,
 	}
 
 	return c, nil
