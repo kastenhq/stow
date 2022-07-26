@@ -34,8 +34,8 @@ func (l *Location) CreateContainer(containerName string) (stow.Container, error)
 
 	// Create a bucket.
 	_, err := l.client.Buckets.Insert(projId, &storage.Bucket{
-		Name: containerName,
-		Location: location,
+		Name:         containerName,
+		Location:     location,
 		StorageClass: storageClass,
 	}).Do()
 	//res, err := l.client.Buckets.Insert(projId, &storage.Bucket{Name: containerName}).Do()
