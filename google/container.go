@@ -15,6 +15,9 @@ type Container struct {
 
 	// Client is responsible for performing the requests.
 	client *storage.Service
+
+	location string
+	storageClass string
 }
 
 // ID returns a string value which represents the name of the container.
@@ -25,6 +28,17 @@ func (c *Container) ID() string {
 // Name returns a string value which represents the name of the container.
 func (c *Container) Name() string {
 	return c.name
+}
+
+// Location returns a string representing the region of the container.
+func (c *Container) Location() string {
+	return c.location
+}
+
+// StorageClass returns the type of container e.g. REGIONAL or MULTI_REGIONAL.
+// See https://pkg.go.dev/cloud.google.com/go/storage@v0.38.0#BucketAttrs
+func (c *Container) StorageClass() string {
+	return c.storageClass
 }
 
 func (c *Container) Bucket() (*storage.Bucket, error) {

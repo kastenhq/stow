@@ -33,7 +33,7 @@ func (l *Location) CreateContainer(containerName string) (stow.Container, error)
 	storageClass, _ := l.config.Config(ConfigStorageClass)
 
 	// Create a bucket.
-	_, err := l.client.Buckets.Insert(projId, &storage.Bucket{
+	b, err := l.client.Buckets.Insert(projId, &storage.Bucket{
 		Name:         containerName,
 		Location:     location,
 		StorageClass: storageClass,
@@ -44,8 +44,10 @@ func (l *Location) CreateContainer(containerName string) (stow.Container, error)
 	}
 
 	newContainer := &Container{
-		name:   containerName,
-		client: l.client,
+		name:         containerName,
+		client:       l.client,
+		location:     b.Location,
+		storageClass: b.StorageClass,
 	}
 
 	return newContainer, nil
