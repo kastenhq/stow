@@ -16,7 +16,7 @@ type Container struct {
 	// Client is responsible for performing the requests.
 	client *storage.Service
 
-	location string
+	location     string
 	storageClass string
 }
 
