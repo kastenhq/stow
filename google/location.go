@@ -77,8 +77,10 @@ func (l *Location) Containers(prefix string, cursor string, count int) ([]stow.C
 
 	for i, o := range res.Items {
 		containers[i] = &Container{
-			name:   o.Name,
-			client: l.client,
+			name:         o.Name,
+			client:       l.client,
+			location:     o.Location,
+			storageClass: o.StorageClass,
 		}
 	}
 
@@ -89,14 +91,16 @@ func (l *Location) Containers(prefix string, cursor string, count int) ([]stow.C
 // exact.
 func (l *Location) Container(id string) (stow.Container, error) {
 
-	_, err := l.client.Buckets.Get(id).Do()
+	b, err := l.client.Buckets.Get(id).Do()
 	if err != nil {
 		return nil, stow.ErrNotFound
 	}
 
 	c := &Container{
-		name:   id,
-		client: l.client,
+		name:         id,
+		client:       l.client,
+		location:     b.Location,
+		storageClass: b.StorageClass,
 	}
 
 	return c, nil
