@@ -30,13 +30,11 @@ func (l *Location) CreateContainer(containerName string) (stow.Container, error)
 
 	projId, _ := l.config.Config(ConfigProjectId)
 	location, _ := l.config.Config(ConfigLocation)
-	storageClass, _ := l.config.Config(ConfigStorageClass)
 
 	// Create a bucket.
 	b, err := l.client.Buckets.Insert(projId, &storage.Bucket{
-		Name:         containerName,
-		Location:     location,
-		StorageClass: storageClass,
+		Name:     containerName,
+		Location: location,
 	}).Do()
 	//res, err := l.client.Buckets.Insert(projId, &storage.Bucket{Name: containerName}).Do()
 	if err != nil {
@@ -44,10 +42,9 @@ func (l *Location) CreateContainer(containerName string) (stow.Container, error)
 	}
 
 	newContainer := &Container{
-		name:         containerName,
-		client:       l.client,
-		location:     b.Location,
-		storageClass: b.StorageClass,
+		name:     containerName,
+		client:   l.client,
+		location: b.Location,
 	}
 
 	return newContainer, nil
@@ -77,10 +74,9 @@ func (l *Location) Containers(prefix string, cursor string, count int) ([]stow.C
 
 	for i, o := range res.Items {
 		containers[i] = &Container{
-			name:         o.Name,
-			client:       l.client,
-			location:     o.Location,
-			storageClass: o.StorageClass,
+			name:     o.Name,
+			client:   l.client,
+			location: o.Location,
 		}
 	}
 
@@ -97,10 +93,9 @@ func (l *Location) Container(id string) (stow.Container, error) {
 	}
 
 	c := &Container{
-		name:         id,
-		client:       l.client,
-		location:     b.Location,
-		storageClass: b.StorageClass,
+		name:     id,
+		client:   l.client,
+		location: b.Location,
 	}
 
 	return c, nil
