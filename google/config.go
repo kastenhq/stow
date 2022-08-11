@@ -23,6 +23,7 @@ const (
 	ConfigProjectId = "project_id"
 	ConfigScopes    = "scopes"
 	ConfigLocation  = "Location"
+	ConfigStorageClass = "StorageClass"
 )
 
 func init() {
