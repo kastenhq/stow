@@ -5,6 +5,7 @@ import (
 	"net/url"
 
 	az "github.com/Azure/azure-sdk-for-go/storage"
+	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/graymeta/stow"
 )
 
@@ -13,6 +14,7 @@ import (
 const (
 	ConfigAccount = "account"
 	ConfigKey     = "key"
+	ConfigEnvName = "envname"
 )
 
 // Kind is the kind of Location this package provides.
@@ -69,7 +71,21 @@ func newBlobStorageClient(cfg stow.Config) (*az.BlobStorageClient, error) {
 	if !ok {
 		return nil, errors.New("missing auth key")
 	}
-	basicClient, err := az.NewBasicClient(acc, key)
+
+	var basicClient az.Client
+	var err error
+	envName, ok := cfg.Config(ConfigEnvName)
+	if ok && envName != "" {
+		var env azure.Environment
+		env, err = azure.EnvironmentFromName(envName)
+		if err != nil {
+			return nil, err
+		}
+		basicClient, err = az.NewBasicClientOnSovereignCloud(acc, key, env)
+	} else {
+		basicClient, err = az.NewBasicClient(acc, key)
+	}
+
 	if err != nil {
 		return nil, errors.New("bad credentials")
 	}

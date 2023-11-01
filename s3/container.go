@@ -1,8 +1,10 @@
 package s3
 
 import (
+	"bytes"
 	"io"
 	"log"
+	"io/ioutil"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -70,8 +72,8 @@ func (c *container) Items(prefix, cursor string, count int) ([]stow.Item, string
 		if *object.StorageClass == "GLACIER" {
 			continue
 		}
-		etag := cleanEtag(*object.ETag) // Copy etag value and remove the strings.
-		object.ETag = &etag             // Assign the value to the object field representing the item.
+		etag := cleanEtag(object.ETag) // Copy etag value and remove the strings.
+		object.ETag = &etag            // Assign the value to the object field representing the item.
 
 		newItem := &item{
 			container: c,
@@ -116,6 +118,10 @@ func (c *container) RemoveItem(id string) error {
 // content, and the size of the file. Many more attributes can be given to the
 // file, including metadata. Keeping it simple for now.
 func (c *container) Put(name string, r io.Reader, size int64, metadata map[string]interface{}) (stow.Item, error) {
+	content, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to create or update item, reading content")
+	}
 	// Convert map[string]interface{} to map[string]*string
 	mdPrepped, err := prepMetadata(metadata)
 	if err != nil {
@@ -126,7 +132,7 @@ func (c *container) Put(name string, r io.Reader, size int64, metadata map[strin
 	_, err = uploader.Upload(&s3manager.UploadInput{
 		Bucket:   aws.String(c.name), // Required
 		Key:      aws.String(name),   // Required
-		Body:     r,
+		Body:     bytes.NewReader(content),
 		Metadata: mdPrepped, // map[string]*string
 	})
 
@@ -139,7 +145,7 @@ func (c *container) Put(name string, r io.Reader, size int64, metadata map[strin
 	})
 	var etag string
 	if i.ETag != nil && err == nil {
-		etag = cleanEtag(*i.ETag)
+		etag = cleanEtag(i.ETag)
 	}
 
 	// Some fields are empty because this information isn't included in the response.
@@ -190,7 +196,7 @@ func (c *container) getItem(id string) (*item, error) {
 		return nil, errors.Wrap(err, "getItem, getting the object")
 	}
 
-	etag := cleanEtag(*res.ETag) // etag string value contains quotations. Remove them.
+	etag := cleanEtag(res.ETag) // etag string value contains quotations. Remove them.
 	md, err := parseMetadata(res.Metadata)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to retrieve Item information, parsing metadata")
@@ -230,7 +236,11 @@ func (c *container) getItem(id string) (*item, error) {
 //
 // This function contains a loop to check for the presence of the three possible
 // filler characters and strips them, resulting in only the Etag value.
-func cleanEtag(etag string) string {
+func cleanEtag(e *string) string {
+	if e == nil {
+		return ""
+	}
+	etag := *e
 	for {
 		// Check if the filler characters are present
 		if strings.HasPrefix(etag, `\"`) {

@@ -19,9 +19,11 @@ const Kind = "google"
 
 const (
 	// The service account json blob
-	ConfigJSON      = "json"
-	ConfigProjectId = "project_id"
-	ConfigScopes    = "scopes"
+	ConfigJSON         = "json"
+	ConfigProjectId    = "project_id"
+	ConfigScopes       = "scopes"
+	ConfigLocation     = "Location"
+	ConfigStorageClass = "StorageClass"
 )
 
 func init() {
@@ -74,24 +76,27 @@ func init() {
 func newGoogleStorageClient(config stow.Config) (*storage.Service, error) {
 	json, _ := config.Config(ConfigJSON)
 	var httpClient *http.Client
+	var creds *google.Credentials
+	var err error
+
 	scopes := []string{storage.DevstorageReadWriteScope}
 	if s, ok := config.Config(ConfigScopes); ok && s != "" {
 		scopes = strings.Split(s, ",")
 	}
 	if json != "" {
-		jwtConf, err := google.JWTConfigFromJSON([]byte(json), scopes...)
-		if err != nil {
-			return nil, err
-		}
-		httpClient = jwtConf.Client(context.Background())
-
-	} else {
-		creds, err := google.FindDefaultCredentials(context.Background(), strings.Join(scopes, ","))
+		creds, err = google.CredentialsFromJSON(context.Background(), []byte(json), scopes...)
 		if err != nil {
 			return nil, err
 		}
 		httpClient = oauth2.NewClient(context.Background(), creds.TokenSource)
+
+	} else {
+		creds, err = google.FindDefaultCredentials(context.Background(), strings.Join(scopes, ","))
+		if err != nil {
+			return nil, err
+		}
 	}
+	httpClient = oauth2.NewClient(context.Background(), creds.TokenSource)
 	service, err := storage.New(httpClient)
 	if err != nil {
 		return nil, err

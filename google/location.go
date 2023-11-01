@@ -29,16 +29,24 @@ func (l *Location) Close() error {
 func (l *Location) CreateContainer(containerName string) (stow.Container, error) {
 
 	projId, _ := l.config.Config(ConfigProjectId)
+	location, _ := l.config.Config(ConfigLocation)
+	storageClass, _ := l.config.Config(ConfigStorageClass)
+
 	// Create a bucket.
-	_, err := l.client.Buckets.Insert(projId, &storage.Bucket{Name: containerName}).Do()
+	b, err := l.client.Buckets.Insert(projId, &storage.Bucket{
+		Name:         containerName,
+		Location:     location,
+		StorageClass: storageClass,
+	}).Do()
 	//res, err := l.client.Buckets.Insert(projId, &storage.Bucket{Name: containerName}).Do()
 	if err != nil {
 		return nil, err
 	}
 
 	newContainer := &Container{
-		name:   containerName,
-		client: l.client,
+		name:     containerName,
+		client:   l.client,
+		location: b.Location,
 	}
 
 	return newContainer, nil
@@ -68,8 +76,9 @@ func (l *Location) Containers(prefix string, cursor string, count int) ([]stow.C
 
 	for i, o := range res.Items {
 		containers[i] = &Container{
-			name:   o.Name,
-			client: l.client,
+			name:     o.Name,
+			client:   l.client,
+			location: o.Location,
 		}
 	}
 
@@ -80,14 +89,15 @@ func (l *Location) Containers(prefix string, cursor string, count int) ([]stow.C
 // exact.
 func (l *Location) Container(id string) (stow.Container, error) {
 
-	_, err := l.client.Buckets.Get(id).Do()
+	b, err := l.client.Buckets.Get(id).Do()
 	if err != nil {
 		return nil, stow.ErrNotFound
 	}
 
 	c := &Container{
-		name:   id,
-		client: l.client,
+		name:     id,
+		client:   l.client,
+		location: b.Location,
 	}
 
 	return c, nil
