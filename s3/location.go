@@ -170,7 +170,7 @@ func (l *location) Container(id string) (stow.Container, error) {
 			return nil, stow.ErrNotFound
 		}
 
-		return nil, errors.Wrap(err, "GetBucketLocation")
+		return nil, errors.Wrap(err, "HeadBucket")
 	}
 
 	c := &container{
