@@ -160,11 +160,11 @@ func (l *location) Container(id string) (stow.Container, error) {
 		}
 	}
 
-	params := &s3.GetBucketLocationInput{
+	params := &s3.HeadBucketInput{
 		Bucket: aws.String(id),
 	}
 
-	_, err := client.GetBucketLocation(params)
+	_, err := client.HeadBucket(params)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == "NoSuchBucket" {
 			return nil, stow.ErrNotFound
