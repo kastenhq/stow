@@ -150,7 +150,7 @@ func TestV2SigningEnabled(t *testing.T) {
 	_, _ = location.ItemByURL(uri)
 }
 
-func TestWillRequestWhenConfigured(t *testing.T) {
+func TestHeadBucketContainerCall(t *testing.T) {
 	is := is.New(t)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
