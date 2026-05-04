@@ -63,12 +63,12 @@ func (c *container) Items(prefix, cursor string, count int) ([]stow.Item, string
 
 	for _, object := range response.Contents {
 		if object.StorageClass == nil {
-			if object.Key != nil {
-				// AWS S3 spec allows omitting the storage class for STANDARD tier objects.
-				// Default to STANDARD.
-				standardStorageClass := "STANDARD"
-				object.StorageClass = &standardStorageClass
+			if object.Key == nil {
+				continue
 			}
+			// AWS S3 spec allows omitting the storage class for STANDARD tier objects.
+			// Default to STANDARD.
+			object.StorageClass = aws.String("STANDARD")
 		}
 		if *object.StorageClass == "GLACIER" {
 			continue
