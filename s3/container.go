@@ -68,7 +68,8 @@ func (c *container) Items(prefix, cursor string, count int) ([]stow.Item, string
 			}
 			// AWS S3 spec allows omitting the storage class for STANDARD tier objects.
 			// Default to STANDARD.
-			object.StorageClass = aws.String("STANDARD")
+			standardStorageClass := "STANDARD"
+			object.StorageClass = &standardStorageClass
 		}
 		if *object.StorageClass == "GLACIER" {
 			continue
