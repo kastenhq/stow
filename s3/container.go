@@ -3,7 +3,6 @@ package s3
 import (
 	"bytes"
 	"io"
-	"log"
 	"io/ioutil"
 	"strings"
 
@@ -65,7 +64,10 @@ func (c *container) Items(prefix, cursor string, count int) ([]stow.Item, string
 	for _, object := range response.Contents {
 		if object.StorageClass == nil {
 			if object.Key != nil {
-				log.Printf("Return Storage Class is empty for object %s \n", *object.Key)
+				// AWS S3 spec allows omitting the storage class for STANDARD tier objects.
+				// Default to STANDARD.
+				standardStorageClass := "STANDARD"
+				object.StorageClass = &standardStorageClass
 			}
 			continue
 		}
