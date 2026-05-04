@@ -96,7 +96,14 @@ func (c *container) Items(prefix, cursor string, count int) ([]stow.Item, string
 	// If not, the last file is the input to the value of after which item to start
 	startAfter := ""
 	if *response.IsTruncated {
-		startAfter = containerItems[len(containerItems)-1].Name()
+		if len(containerItems) > 0 {
+			startAfter = containerItems[len(containerItems)-1].Name()
+		} else if len(response.Contents) > 0 {
+			// GUARD: If all items in this page were filtered out (e.g., all GLACIER),
+			// containerItems is empty. But if there is still content in the response, fall back to the last raw S3 key to prevent 
+			// an out-of-bounds panic and ensure pagination continues.
+			startAfter = *response.Contents[len(response.Contents)-1].Key
+		}
 	}
 
 	return containerItems, startAfter, nil
