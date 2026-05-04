@@ -69,7 +69,6 @@ func (c *container) Items(prefix, cursor string, count int) ([]stow.Item, string
 				standardStorageClass := "STANDARD"
 				object.StorageClass = &standardStorageClass
 			}
-			continue
 		}
 		if *object.StorageClass == "GLACIER" {
 			continue
