@@ -9,16 +9,28 @@ import (
 	"github.com/graymeta/stow"
 )
 
-// ConfigAccount and ConfigKey are the supported configuration items for
-// Azure blob storage.
+// ConfigAccount, ConfigKey, and ConfigSASToken are the supported
+// configuration items for Azure blob storage. Either ConfigKey or
+// ConfigSASToken must be present; ConfigSASToken is an alternative to
+// ConfigKey, not additive.
 const (
-	ConfigAccount = "account"
-	ConfigKey     = "key"
-	ConfigEnvName = "envname"
+	ConfigAccount  = "account"
+	ConfigKey      = "key"
+	ConfigEnvName  = "envname"
+	ConfigSASToken = "sastoken"
 )
 
 // Kind is the kind of Location this package provides.
 const Kind = "azure"
+
+func hasAuth(config stow.Config) bool {
+	key, ok := config.Config(ConfigKey)
+	if ok && key != "" {
+		return true
+	}
+	sasToken, ok := config.Config(ConfigSASToken)
+	return ok && sasToken != ""
+}
 
 func init() {
 	validatefn := func(config stow.Config) error {
@@ -26,9 +38,8 @@ func init() {
 		if !ok {
 			return errors.New("missing account id")
 		}
-		_, ok = config.Config(ConfigKey)
-		if !ok {
-			return errors.New("missing auth key")
+		if !hasAuth(config) {
+			return errors.New("missing auth key or sas token")
 		}
 		return nil
 	}
@@ -37,9 +48,8 @@ func init() {
 		if !ok {
 			return nil, errors.New("missing account id")
 		}
-		_, ok = config.Config(ConfigKey)
-		if !ok {
-			return nil, errors.New("missing auth key")
+		if !hasAuth(config) {
+			return nil, errors.New("missing auth key or sas token")
 		}
 		l := &location{
 			config: config,
@@ -67,6 +77,27 @@ func newBlobStorageClient(cfg stow.Config) (*az.BlobStorageClient, error) {
 	if !ok {
 		return nil, errors.New("missing account id")
 	}
+
+	env := azure.PublicCloud
+	envName, ok := cfg.Config(ConfigEnvName)
+	if ok && envName != "" {
+		var err error
+		env, err = azure.EnvironmentFromName(envName)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if sasToken, ok := cfg.Config(ConfigSASToken); ok && sasToken != "" {
+		endpoint := "https://" + acc + ".blob." + env.StorageEndpointSuffix
+		sasClient, err := az.NewAccountSASClientFromEndpointToken(endpoint, sasToken)
+		if err != nil {
+			return nil, errors.New("bad credentials")
+		}
+		client := sasClient.GetBlobService()
+		return &client, nil
+	}
+
 	key, ok := cfg.Config(ConfigKey)
 	if !ok {
 		return nil, errors.New("missing auth key")
@@ -74,13 +105,7 @@ func newBlobStorageClient(cfg stow.Config) (*az.BlobStorageClient, error) {
 
 	var basicClient az.Client
 	var err error
-	envName, ok := cfg.Config(ConfigEnvName)
-	if ok && envName != "" {
-		var env azure.Environment
-		env, err = azure.EnvironmentFromName(envName)
-		if err != nil {
-			return nil, err
-		}
+	if envName != "" {
 		basicClient, err = az.NewBasicClientOnSovereignCloud(acc, key, env)
 	} else {
 		basicClient, err = az.NewBasicClient(acc, key)
