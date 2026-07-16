@@ -28,6 +28,15 @@ func hasAuth(config stow.Config) bool {
 	if ok && key != "" {
 		return true
 	}
+	return usingSASToken(config)
+}
+
+// usingSASToken reports whether the config authenticates with a SAS token
+// rather than a shared account key. SAS tokens minted for Azure Workload
+// (federated) Identity are user-delegation SAS: they are scoped to a single
+// container and cannot perform account-level operations such as listing
+// containers, so callers must avoid account-level actions on this path.
+func usingSASToken(config stow.Config) bool {
 	sasToken, ok := config.Config(ConfigSASToken)
 	return ok && sasToken != ""
 }
@@ -59,10 +68,15 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		// test the connection
-		_, _, err = l.Containers("", stow.CursorStart, 1)
-		if err != nil {
-			return nil, err
+		// A user-delegation SAS token (Azure Workload Identity) is scoped to a
+		// single container and cannot list containers at the account level, so
+		// skip the account-level connection probe on the SAS path. Access is
+		// validated when the caller operates on its specific container.
+		if !usingSASToken(config) {
+			// test the connection
+			if _, _, err = l.Containers("", stow.CursorStart, 1); err != nil {
+				return nil, err
+			}
 		}
 		return l, nil
 	}
