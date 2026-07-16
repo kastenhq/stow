@@ -62,6 +62,26 @@ func (l *location) Containers(prefix, cursor string, count int) ([]stow.Containe
 }
 
 func (l *location) Container(id string) (stow.Container, error) {
+	// A user-delegation SAS token (Azure Workload Identity) is scoped to this
+	// container and cannot list containers at the account level. Reference the
+	// container directly and confirm it with a container-scoped existence check
+	// instead of enumerating.
+	if usingSASToken(l.config) {
+		ref := l.client.GetContainerReference(id)
+		exists, err := ref.Exists()
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			return nil, stow.ErrNotFound
+		}
+		return &container{
+			id:         id,
+			properties: ref.Properties,
+			client:     l.client,
+		}, nil
+	}
+
 	cursor := stow.CursorStart
 	for {
 		containers, crsr, err := l.Containers(id[:3], cursor, 100)
