@@ -63,18 +63,16 @@ func (l *location) Containers(prefix, cursor string, count int) ([]stow.Containe
 
 func (l *location) Container(id string) (stow.Container, error) {
 	// A user-delegation SAS token (Azure Workload Identity) is scoped to this
-	// container and cannot list containers at the account level. Reference the
-	// container directly and confirm it with a container-scoped existence check
-	// instead of enumerating.
+	// single container (sr=c) and is authorized only for blob operations WITHIN
+	// the container. Container-level operations — listing containers, and also
+	// "Get Container Properties" (which ref.Exists() issues) — require an
+	// account-level SAS (srt=service/container/object) and return HTTP 403 with
+	// a container-scoped token, regardless of the SAS permissions or the
+	// delegated identity's RBAC. So reference the container directly without any
+	// existence/property probe; a genuinely missing container surfaces on the
+	// first blob operation.
 	if usingSASToken(l.config) {
 		ref := l.client.GetContainerReference(id)
-		exists, err := ref.Exists()
-		if err != nil {
-			return nil, err
-		}
-		if !exists {
-			return nil, stow.ErrNotFound
-		}
 		return &container{
 			id:         id,
 			properties: ref.Properties,
