@@ -2,6 +2,7 @@ package azure
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 
 	az "github.com/Azure/azure-sdk-for-go/storage"
@@ -10,9 +11,10 @@ import (
 )
 
 // ConfigAccount, ConfigKey, and ConfigSASToken are the supported
-// configuration items for Azure blob storage. Either ConfigKey or
-// ConfigSASToken must be present; ConfigSASToken is an alternative to
-// ConfigKey, not additive.
+// configuration items for Azure blob storage. At least one of ConfigKey or
+// ConfigSASToken must be present. ConfigSASToken is an alternative to
+// ConfigKey, not additive; if both are supplied, ConfigSASToken takes
+// precedence (see newBlobStorageClient).
 const (
 	ConfigAccount  = "account"
 	ConfigKey      = "key"
@@ -102,11 +104,14 @@ func newBlobStorageClient(cfg stow.Config) (*az.BlobStorageClient, error) {
 		}
 	}
 
+	// SAS token takes precedence over a shared account key: it is checked first,
+	// so if both are set (they are alternatives, not additive) the SAS token
+	// wins. See the ConfigSASToken doc.
 	if sasToken, ok := cfg.Config(ConfigSASToken); ok && sasToken != "" {
 		endpoint := "https://" + acc + ".blob." + env.StorageEndpointSuffix
 		sasClient, err := az.NewAccountSASClientFromEndpointToken(endpoint, sasToken)
 		if err != nil {
-			return nil, errors.New("bad credentials")
+			return nil, fmt.Errorf("bad credentials: %w", err)
 		}
 		client := sasClient.GetBlobService()
 		return &client, nil
@@ -126,7 +131,7 @@ func newBlobStorageClient(cfg stow.Config) (*az.BlobStorageClient, error) {
 	}
 
 	if err != nil {
-		return nil, errors.New("bad credentials")
+		return nil, fmt.Errorf("bad credentials: %w", err)
 	}
 	client := basicClient.GetBlobService()
 	return &client, err
