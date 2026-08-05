@@ -43,6 +43,24 @@ func usingSASToken(config stow.Config) bool {
 	return ok && sasToken != ""
 }
 
+// requireHTTPSSASProtocol rejects a SAS token whose signed protocol (spr) would
+// permit non-HTTPS transport. The Azure storage SDK derives the request scheme
+// from spr: newSASClient sets useHTTPS = (spr == "https") for any non-empty spr,
+// which overrides the endpoint scheme, so a token with spr=https,http makes the
+// client send requests over plaintext HTTP even against an https:// endpoint. An
+// empty spr is allowed — the SDK then infers the scheme from the (https)
+// endpoint. Parsed exactly as the SDK does (url.ParseQuery + Get("spr")).
+func requireHTTPSSASProtocol(sasToken string) error {
+	values, err := url.ParseQuery(sasToken)
+	if err != nil {
+		return fmt.Errorf("bad credentials: invalid SAS token: %w", err)
+	}
+	if spr := values.Get("spr"); spr != "" && spr != "https" {
+		return fmt.Errorf("bad credentials: SAS token allows non-HTTPS transport (spr=%q); only https is permitted", spr)
+	}
+	return nil
+}
+
 func init() {
 	validatefn := func(config stow.Config) error {
 		_, ok := config.Config(ConfigAccount)
@@ -108,6 +126,9 @@ func newBlobStorageClient(cfg stow.Config) (*az.BlobStorageClient, error) {
 	// so if both are set (they are alternatives, not additive) the SAS token
 	// wins. See the ConfigSASToken doc.
 	if sasToken, ok := cfg.Config(ConfigSASToken); ok && sasToken != "" {
+		if err := requireHTTPSSASProtocol(sasToken); err != nil {
+			return nil, err
+		}
 		endpoint := "https://" + acc + ".blob." + env.StorageEndpointSuffix
 		sasClient, err := az.NewAccountSASClientFromEndpointToken(endpoint, sasToken)
 		if err != nil {
