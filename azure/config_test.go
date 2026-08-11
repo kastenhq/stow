@@ -22,8 +22,6 @@ func TestNewBlobStorageClientSASToken(t *testing.T) {
 func TestNewBlobStorageClientRejectsNonHTTPSSASProtocol(t *testing.T) {
 	is := is.New(t)
 
-	// spr=https,http would make the Azure SDK send requests over plaintext HTTP
-	// (useHTTPS = spr == "https"), overriding the https:// endpoint. Reject it.
 	cfg := stow.ConfigMap{
 		ConfigAccount:  "testaccount",
 		ConfigSASToken: "sv=2020-08-04&ss=b&srt=sco&sp=rwdlac&spr=https,http&se=2099-01-01T00:00:00Z&sig=abc123",
@@ -36,7 +34,6 @@ func TestNewBlobStorageClientRejectsNonHTTPSSASProtocol(t *testing.T) {
 func TestNewBlobStorageClientAcceptsHTTPSSASProtocol(t *testing.T) {
 	is := is.New(t)
 
-	// An explicit spr=https is the secure case and must keep working.
 	cfg := stow.ConfigMap{
 		ConfigAccount:  "testaccount",
 		ConfigSASToken: "sv=2020-08-04&ss=b&srt=sco&sp=rwdlac&spr=https&se=2099-01-01T00:00:00Z&sig=abc123",
