@@ -11,10 +11,9 @@ import (
 )
 
 // ConfigAccount, ConfigKey, and ConfigSASToken are the supported
-// configuration items for Azure blob storage. At least one of ConfigKey or
-// ConfigSASToken must be present. ConfigSASToken is an alternative to
-// ConfigKey, not additive; if both are supplied, ConfigSASToken takes
-// precedence (see newBlobStorageClient).
+// configuration items for Azure blob storage. ConfigSASToken is an
+// alternative to ConfigKey; if both are set, ConfigSASToken wins (see
+// newBlobStorageClient).
 const (
 	ConfigAccount  = "account"
 	ConfigKey      = "key"
@@ -33,23 +32,16 @@ func hasAuth(config stow.Config) bool {
 	return usingSASToken(config)
 }
 
-// usingSASToken reports whether the config authenticates with a SAS token
-// rather than a shared account key. SAS tokens minted for Azure Workload
-// (federated) Identity are user-delegation SAS: they are scoped to a single
-// container and cannot perform account-level operations such as listing
-// containers, so callers must avoid account-level actions on this path.
 func usingSASToken(config stow.Config) bool {
 	sasToken, ok := config.Config(ConfigSASToken)
 	return ok && sasToken != ""
 }
 
-// requireHTTPSSASProtocol rejects a SAS token whose signed protocol (spr) would
-// permit non-HTTPS transport. The Azure storage SDK derives the request scheme
-// from spr: newSASClient sets useHTTPS = (spr == "https") for any non-empty spr,
-// which overrides the endpoint scheme, so a token with spr=https,http makes the
-// client send requests over plaintext HTTP even against an https:// endpoint. An
-// empty spr is allowed — the SDK then infers the scheme from the (https)
-// endpoint. Parsed exactly as the SDK does (url.ParseQuery + Get("spr")).
+// requireHTTPSSASProtocol rejects a SAS token whose spr parameter would let
+// the Azure SDK downgrade to HTTP: a non-empty spr overrides the endpoint
+// scheme, so spr=https,http would send requests in plaintext even against
+// an https:// endpoint. An empty spr is fine — the SDK falls back to the
+// endpoint's scheme.
 func requireHTTPSSASProtocol(sasToken string) error {
 	values, err := url.ParseQuery(sasToken)
 	if err != nil {
@@ -88,10 +80,9 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		// A user-delegation SAS token (Azure Workload Identity) is scoped to a
-		// single container and cannot list containers at the account level, so
-		// skip the account-level connection probe on the SAS path. Access is
-		// validated when the caller operates on its specific container.
+		// A SAS token is scoped to a single container and can't list
+		// containers at the account level, so skip the probe here; access is
+		// checked when the caller uses its container.
 		if !usingSASToken(config) {
 			// test the connection
 			if _, _, err = l.Containers("", stow.CursorStart, 1); err != nil {
@@ -122,9 +113,7 @@ func newBlobStorageClient(cfg stow.Config) (*az.BlobStorageClient, error) {
 		}
 	}
 
-	// SAS token takes precedence over a shared account key: it is checked first,
-	// so if both are set (they are alternatives, not additive) the SAS token
-	// wins. See the ConfigSASToken doc.
+	// SAS token takes precedence over the account key (see ConfigSASToken doc).
 	if sasToken, ok := cfg.Config(ConfigSASToken); ok && sasToken != "" {
 		if err := requireHTTPSSASProtocol(sasToken); err != nil {
 			return nil, err
