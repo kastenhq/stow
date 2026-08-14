@@ -62,6 +62,19 @@ func (l *location) Containers(prefix, cursor string, count int) ([]stow.Containe
 }
 
 func (l *location) Container(id string) (stow.Container, error) {
+	// A container-scoped SAS token can't do container-level ops like Get
+	// Container Properties (used by ref.Exists()) — it 403s regardless of
+	// RBAC — so skip the probe and reference the container directly; a
+	// missing container surfaces on the first blob operation.
+	if usingSASToken(l.config) {
+		ref := l.client.GetContainerReference(id)
+		return &container{
+			id:         id,
+			properties: ref.Properties,
+			client:     l.client,
+		}, nil
+	}
+
 	cursor := stow.CursorStart
 	for {
 		containers, crsr, err := l.Containers(id[:3], cursor, 100)

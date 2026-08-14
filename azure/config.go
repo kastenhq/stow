@@ -2,6 +2,7 @@ package azure
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 
 	az "github.com/Azure/azure-sdk-for-go/storage"
@@ -9,16 +10,50 @@ import (
 	"github.com/graymeta/stow"
 )
 
-// ConfigAccount and ConfigKey are the supported configuration items for
-// Azure blob storage.
+// ConfigAccount, ConfigKey, and ConfigSASToken are the supported
+// configuration items for Azure blob storage. ConfigSASToken is an
+// alternative to ConfigKey; if both are set, ConfigSASToken wins (see
+// newBlobStorageClient).
 const (
-	ConfigAccount = "account"
-	ConfigKey     = "key"
-	ConfigEnvName = "envname"
+	ConfigAccount  = "account"
+	ConfigKey      = "key"
+	ConfigEnvName  = "envname"
+	ConfigSASToken = "sastoken"
 )
 
 // Kind is the kind of Location this package provides.
 const Kind = "azure"
+
+func hasAuth(config stow.Config) bool {
+	key, ok := config.Config(ConfigKey)
+	if ok && key != "" {
+		return true
+	}
+	return usingSASToken(config)
+}
+
+// usingSASToken reports whether the config authenticates with a SAS token.
+// User-delegation SAS (Azure Workload Identity) is container-scoped and cannot
+// perform account-level operations, so callers must avoid them on this path.
+func usingSASToken(config stow.Config) bool {
+	sasToken, ok := config.Config(ConfigSASToken)
+	return ok && sasToken != ""
+}
+
+// requireHTTPSSASProtocol rejects a SAS token whose signed protocol (spr) would
+// permit non-HTTPS transport. The SDK sets useHTTPS = (spr == "https") for any
+// non-empty spr, so spr=https,http would send requests over plaintext HTTP even
+// against an https:// endpoint. Empty spr is fine (scheme inferred from endpoint).
+func requireHTTPSSASProtocol(sasToken string) error {
+	values, err := url.ParseQuery(sasToken)
+	if err != nil {
+		return fmt.Errorf("bad credentials: invalid SAS token: %w", err)
+	}
+	if spr := values.Get("spr"); spr != "" && spr != "https" {
+		return fmt.Errorf("bad credentials: SAS token allows non-HTTPS transport (spr=%q); only https is permitted", spr)
+	}
+	return nil
+}
 
 func init() {
 	validatefn := func(config stow.Config) error {
@@ -26,9 +61,8 @@ func init() {
 		if !ok {
 			return errors.New("missing account id")
 		}
-		_, ok = config.Config(ConfigKey)
-		if !ok {
-			return errors.New("missing auth key")
+		if !hasAuth(config) {
+			return errors.New("missing auth key or sas token")
 		}
 		return nil
 	}
@@ -37,9 +71,8 @@ func init() {
 		if !ok {
 			return nil, errors.New("missing account id")
 		}
-		_, ok = config.Config(ConfigKey)
-		if !ok {
-			return nil, errors.New("missing auth key")
+		if !hasAuth(config) {
+			return nil, errors.New("missing auth key or sas token")
 		}
 		l := &location{
 			config: config,
@@ -49,10 +82,13 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		// test the connection
-		_, _, err = l.Containers("", stow.CursorStart, 1)
-		if err != nil {
-			return nil, err
+		// User-delegation SAS is container-scoped and cannot list containers, so
+		// skip the account-level connection probe; access is checked per-container.
+		if !usingSASToken(config) {
+			// test the connection
+			if _, _, err = l.Containers("", stow.CursorStart, 1); err != nil {
+				return nil, err
+			}
 		}
 		return l, nil
 	}
@@ -67,6 +103,36 @@ func newBlobStorageClient(cfg stow.Config) (*az.BlobStorageClient, error) {
 	if !ok {
 		return nil, errors.New("missing account id")
 	}
+
+	env := azure.PublicCloud
+	envName, ok := cfg.Config(ConfigEnvName)
+	if ok && envName != "" {
+		var err error
+		env, err = azure.EnvironmentFromName(envName)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// SAS token wins over ConfigKey when both are set (see ConfigSASToken doc).
+	if sasToken, ok := cfg.Config(ConfigSASToken); ok && sasToken != "" {
+		if err := requireHTTPSSASProtocol(sasToken); err != nil {
+			return nil, err
+		}
+		// The key path validates the account inside NewBasicClient; the SAS path
+		// builds the endpoint URL by hand, so validate the account name here too.
+		if !az.IsValidStorageAccount(acc) {
+			return nil, fmt.Errorf("bad credentials: invalid storage account name %q", acc)
+		}
+		endpoint := "https://" + acc + ".blob." + env.StorageEndpointSuffix
+		sasClient, err := az.NewAccountSASClientFromEndpointToken(endpoint, sasToken)
+		if err != nil {
+			return nil, fmt.Errorf("bad credentials: %w", err)
+		}
+		client := sasClient.GetBlobService()
+		return &client, nil
+	}
+
 	key, ok := cfg.Config(ConfigKey)
 	if !ok {
 		return nil, errors.New("missing auth key")
@@ -74,20 +140,14 @@ func newBlobStorageClient(cfg stow.Config) (*az.BlobStorageClient, error) {
 
 	var basicClient az.Client
 	var err error
-	envName, ok := cfg.Config(ConfigEnvName)
-	if ok && envName != "" {
-		var env azure.Environment
-		env, err = azure.EnvironmentFromName(envName)
-		if err != nil {
-			return nil, err
-		}
+	if envName != "" {
 		basicClient, err = az.NewBasicClientOnSovereignCloud(acc, key, env)
 	} else {
 		basicClient, err = az.NewBasicClient(acc, key)
 	}
 
 	if err != nil {
-		return nil, errors.New("bad credentials")
+		return nil, fmt.Errorf("bad credentials: %w", err)
 	}
 	client := basicClient.GetBlobService()
 	return &client, err
