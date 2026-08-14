@@ -32,16 +32,18 @@ func hasAuth(config stow.Config) bool {
 	return usingSASToken(config)
 }
 
+// usingSASToken reports whether the config authenticates with a SAS token.
+// User-delegation SAS (Azure Workload Identity) is container-scoped and cannot
+// perform account-level operations, so callers must avoid them on this path.
 func usingSASToken(config stow.Config) bool {
 	sasToken, ok := config.Config(ConfigSASToken)
 	return ok && sasToken != ""
 }
 
-// requireHTTPSSASProtocol rejects a SAS token whose spr parameter would let
-// the Azure SDK downgrade to HTTP: a non-empty spr overrides the endpoint
-// scheme, so spr=https,http would send requests in plaintext even against
-// an https:// endpoint. An empty spr is fine — the SDK falls back to the
-// endpoint's scheme.
+// requireHTTPSSASProtocol rejects a SAS token whose signed protocol (spr) would
+// permit non-HTTPS transport. The SDK sets useHTTPS = (spr == "https") for any
+// non-empty spr, so spr=https,http would send requests over plaintext HTTP even
+// against an https:// endpoint. Empty spr is fine (scheme inferred from endpoint).
 func requireHTTPSSASProtocol(sasToken string) error {
 	values, err := url.ParseQuery(sasToken)
 	if err != nil {
@@ -80,9 +82,8 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		// A SAS token is scoped to a single container and can't list
-		// containers at the account level, so skip the probe here; access is
-		// checked when the caller uses its container.
+		// User-delegation SAS is container-scoped and cannot list containers, so
+		// skip the account-level connection probe; access is checked per-container.
 		if !usingSASToken(config) {
 			// test the connection
 			if _, _, err = l.Containers("", stow.CursorStart, 1); err != nil {
@@ -113,10 +114,15 @@ func newBlobStorageClient(cfg stow.Config) (*az.BlobStorageClient, error) {
 		}
 	}
 
-	// SAS token takes precedence over the account key (see ConfigSASToken doc).
+	// SAS token wins over ConfigKey when both are set (see ConfigSASToken doc).
 	if sasToken, ok := cfg.Config(ConfigSASToken); ok && sasToken != "" {
 		if err := requireHTTPSSASProtocol(sasToken); err != nil {
 			return nil, err
+		}
+		// The key path validates the account inside NewBasicClient; the SAS path
+		// builds the endpoint URL by hand, so validate the account name here too.
+		if !az.IsValidStorageAccount(acc) {
+			return nil, fmt.Errorf("bad credentials: invalid storage account name %q", acc)
 		}
 		endpoint := "https://" + acc + ".blob." + env.StorageEndpointSuffix
 		sasClient, err := az.NewAccountSASClientFromEndpointToken(endpoint, sasToken)
