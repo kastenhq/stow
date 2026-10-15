@@ -174,3 +174,29 @@ func TestHeadBucketContainerCall(t *testing.T) {
 	// Make sure that this is an error
 	is.NoErr(err)
 }
+
+func TestSkipSSLVerifyKeepsDefaultTransport(t *testing.T) {
+	is := is.New(t)
+
+	config := stow.ConfigMap{
+		"access_key_id":            "access-key",
+		"secret_key":               "secret-key",
+		"region":                   "do-not-care",
+		"insecure_skip_ssl_verify": "true",
+	}
+
+	client, _, err := newS3Client(config, "")
+	is.NoErr(err)
+
+	transport, ok := client.Config.HTTPClient.Transport.(*http.Transport)
+	is.True(ok)
+	is.True(transport.TLSClientConfig.InsecureSkipVerify)
+	is.Equal(reflect.ValueOf(transport.Proxy).Pointer(), reflect.ValueOf(http.ProxyFromEnvironment).Pointer())
+	is.NotNil(transport.DialContext)
+	is.Equal(transport.TLSHandshakeTimeout, http.DefaultTransport.(*http.Transport).TLSHandshakeTimeout)
+
+	delete(config, "insecure_skip_ssl_verify")
+	client, _, err = newS3Client(config, "")
+	is.NoErr(err)
+	is.Nil(client.Config.HTTPClient.Transport)
+}

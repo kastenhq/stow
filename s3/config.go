@@ -141,11 +141,7 @@ func newS3Client(config stow.Config, region string) (client *s3.S3, endpoint str
 
 	httpClient := &http.Client{}
 	if skipSSLVerify, ok := config.Config(ConfigInsecureSkipSSLVerify); ok && skipSSLVerify == "true" {
-		httpClient.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		}
+		httpClient.Transport = skipSSLVerifyTransport()
 	}
 
 	awsConfig := aws.NewConfig().
@@ -195,4 +191,15 @@ func newS3Client(config stow.Config, region string) (client *s3.S3, endpoint str
 	}
 
 	return s3Client, endpoint, nil
+}
+
+// skipSSLVerifyTransport is the default transport with certificate
+// verification turned off. Building a transport from scratch would also drop
+// the proxy from the environment and the dial and TLS handshake timeouts.
+func skipSSLVerifyTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{
+		InsecureSkipVerify: true,
+	}
+	return transport
 }
