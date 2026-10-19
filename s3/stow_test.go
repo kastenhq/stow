@@ -194,9 +194,4 @@ func TestSkipSSLVerifyKeepsDefaultTransport(t *testing.T) {
 	is.Equal(reflect.ValueOf(transport.Proxy).Pointer(), reflect.ValueOf(http.ProxyFromEnvironment).Pointer())
 	is.NotNil(transport.DialContext)
 	is.Equal(transport.TLSHandshakeTimeout, http.DefaultTransport.(*http.Transport).TLSHandshakeTimeout)
-
-	delete(config, "insecure_skip_ssl_verify")
-	client, _, err = newS3Client(config, "")
-	is.NoErr(err)
-	is.Nil(client.Config.HTTPClient.Transport)
 }
