@@ -141,11 +141,11 @@ func newS3Client(config stow.Config, region string) (client *s3.S3, endpoint str
 
 	httpClient := &http.Client{}
 	if skipSSLVerify, ok := config.Config(ConfigInsecureSkipSSLVerify); ok && skipSSLVerify == "true" {
-		httpClient.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
 		}
+		httpClient.Transport = transport
 	}
 
 	awsConfig := aws.NewConfig().
